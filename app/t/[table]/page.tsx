@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
-import { saveSession, getSession } from "@/lib/session";
-import { validatePhone, maskPhone } from "@/lib/phone";
-
-type Step = "phone" | "verify";
+import {
+  saveSession,
+  getSession,
+  validatePhone,
+} from "@/lib/session";
 
 export default function TableLandingPage({
   params,
@@ -15,13 +16,10 @@ export default function TableLandingPage({
 }) {
   const router = useRouter();
   const tableNumber = parseInt(params.table, 10);
-  const [step, setStep] = useState<Step>("phone");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [loading, setLoading] = useState(false);
-  const [resendIn, setResendIn] = useState(0);
 
   useEffect(() => {
     const existing = getSession();
@@ -29,12 +27,6 @@ export default function TableLandingPage({
       router.replace(`/t/${tableNumber}/menu`);
     }
   }, [tableNumber, router]);
-
-  useEffect(() => {
-    if (resendIn <= 0) return;
-    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [resendIn]);
 
   if (isNaN(tableNumber) || tableNumber < 1) {
     return (
@@ -45,46 +37,13 @@ export default function TableLandingPage({
     );
   }
 
-  const sendOtp = async () => {
-    if (!validatePhone(phone)) {
-      setErrors({ phone: "Enter a valid 10-digit mobile number" });
-      return;
-    }
-
-    setLoading(true);
-    setErrors({});
-
-    try {
-      const res = await fetch("/api/otp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrors({ phone: data.error || "Could not send OTP" });
-        return;
-      }
-
-      setStep("verify");
-      setResendIn(30);
-      setOtp("");
-    } catch {
-      setErrors({ phone: "Network error. Please try again." });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerify = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: Record<string, string> = {};
+    const newErrors: { name?: string; phone?: string } = {};
 
     if (!name.trim()) newErrors.name = "Name is required";
-    if (!otp.trim() || otp.trim().length !== 6) {
-      newErrors.otp = "Enter the 6-digit OTP";
-    }
+    if (!phone.trim()) newErrors.phone = "Phone number is required";
+    else if (!validatePhone(phone)) newErrors.phone = "Enter a valid 10-digit phone number";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -92,32 +51,12 @@ export default function TableLandingPage({
     }
 
     setLoading(true);
-    setErrors({});
-
-    try {
-      const res = await fetch("/api/otp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp: otp.trim() }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrors({ otp: data.error || "Invalid OTP" });
-        setLoading(false);
-        return;
-      }
-
-      saveSession({
-        tableNumber,
-        customerName: name.trim(),
-        phone: data.phone,
-      });
-      router.push(`/t/${tableNumber}/menu`);
-    } catch {
-      setErrors({ otp: "Network error. Please try again." });
-      setLoading(false);
-    }
+    saveSession({
+      tableNumber,
+      customerName: name.trim(),
+      phone: phone.trim(),
+    });
+    router.push(`/t/${tableNumber}/menu`);
   };
 
   return (
@@ -141,123 +80,56 @@ export default function TableLandingPage({
         </div>
 
         <div className="card" style={{ marginTop: 32, padding: 24 }}>
-          {step === "phone" ? (
-            <>
-              <h1 style={{ fontSize: 22, color: "var(--burgundy)", marginBottom: 8 }}>
-                Verify Your Number
-              </h1>
-              <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 24 }}>
-                We&apos;ll send a one-time code via SMS to your mobile.
-              </p>
+          <h1 style={{ fontSize: 22, color: "var(--burgundy)", marginBottom: 8 }}>
+            Welcome!
+          </h1>
+          <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 24 }}>
+            Tell us your name so we can bring your order to the right table.
+          </p>
 
-              <div className="input-group">
-                <label htmlFor="phone">Mobile Number *</label>
-                <input
-                  id="phone"
-                  type="tel"
-                  placeholder="10-digit mobile number"
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value);
-                    setErrors({});
-                  }}
-                  autoComplete="tel"
-                  inputMode="numeric"
-                />
-                {errors.phone && (
-                  <span className="input-error">{errors.phone}</span>
-                )}
-              </div>
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div className="input-group">
+              <label htmlFor="name">Your Name *</label>
+              <input
+                id="name"
+                type="text"
+                placeholder="Enter your name"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setErrors((prev) => ({ ...prev, name: undefined }));
+                }}
+                autoComplete="name"
+              />
+              {errors.name && <span className="input-error">{errors.name}</span>}
+            </div>
 
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={loading}
-                onClick={sendOtp}
-                style={{ marginTop: 20, width: "100%" }}
-              >
-                {loading ? "Sending OTP..." : "Send OTP →"}
-              </button>
-            </>
-          ) : (
-            <>
-              <h1 style={{ fontSize: 22, color: "var(--burgundy)", marginBottom: 8 }}>
-                Enter OTP
-              </h1>
-              <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 20 }}>
-                Check SMS on <strong>{maskPhone(phone)}</strong>
-              </p>
+            <div className="input-group">
+              <label htmlFor="phone">Phone Number *</label>
+              <input
+                id="phone"
+                type="tel"
+                placeholder="10-digit mobile number"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  setErrors((prev) => ({ ...prev, phone: undefined }));
+                }}
+                autoComplete="tel"
+                inputMode="numeric"
+              />
+              {errors.phone && <span className="input-error">{errors.phone}</span>}
+            </div>
 
-              <form onSubmit={handleVerify} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                <div className="input-group">
-                  <label htmlFor="otp">6-Digit OTP *</label>
-                  <input
-                    id="otp"
-                    type="text"
-                    placeholder="Enter OTP from SMS"
-                    value={otp}
-                    onChange={(e) => {
-                      setOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
-                      setErrors((prev) => ({ ...prev, otp: "" }));
-                    }}
-                    inputMode="numeric"
-                    maxLength={6}
-                    autoComplete="one-time-code"
-                    style={{ letterSpacing: "0.2em", fontSize: 20, textAlign: "center" }}
-                  />
-                  {errors.otp && <span className="input-error">{errors.otp}</span>}
-                </div>
-
-                <div className="input-group">
-                  <label htmlFor="name">Your Name *</label>
-                  <input
-                    id="name"
-                    type="text"
-                    placeholder="Enter your name"
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      setErrors((prev) => ({ ...prev, name: "" }));
-                    }}
-                    autoComplete="name"
-                  />
-                  {errors.name && <span className="input-error">{errors.name}</span>}
-                </div>
-
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={loading}
-                  style={{ width: "100%" }}
-                >
-                  {loading ? "Verifying..." : "Verify & Browse Menu →"}
-                </button>
-              </form>
-
-              <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ flex: 1, fontSize: 13 }}
-                  onClick={() => {
-                    setStep("phone");
-                    setOtp("");
-                  }}
-                >
-                  ← Change Number
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ flex: 1, fontSize: 13 }}
-                  disabled={resendIn > 0 || loading}
-                  onClick={sendOtp}
-                >
-                  {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend OTP"}
-                </button>
-              </div>
-            </>
-          )}
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading}
+              style={{ marginTop: 8, width: "100%" }}
+            >
+              {loading ? "Loading Menu..." : "Browse Menu →"}
+            </button>
+          </form>
         </div>
 
         <p
@@ -268,7 +140,7 @@ export default function TableLandingPage({
             color: "var(--text-muted)",
           }}
         >
-          Secure login · OTP valid for 5 minutes
+          Quick login · Order directly from your phone
         </p>
       </div>
     </main>
