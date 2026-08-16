@@ -47,10 +47,9 @@ export function clearCart(): void {
   sessionStorage.removeItem(CART_KEY);
 }
 
-export function validatePhone(phone: string): boolean {
-  const cleaned = phone.replace(/[\s\-+]/g, "");
-  return /^(\d{10}|\d{12})$/.test(cleaned);
-}
+import { validatePhone, normalizePhone } from "./phone";
+
+export { validatePhone, normalizePhone };
 
 export function getCartTotal(cart: CartItem[]): number {
   return cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
