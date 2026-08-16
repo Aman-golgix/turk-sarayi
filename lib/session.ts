@@ -47,9 +47,12 @@ export function clearCart(): void {
   sessionStorage.removeItem(CART_KEY);
 }
 
-import { validatePhone, normalizePhone } from "./phone";
-
-export { validatePhone, normalizePhone };
+export function validatePhone(phone: string): boolean {
+  const cleaned = phone.replace(/[\s\-+()]/g, "");
+  const normalized =
+    cleaned.length === 12 && cleaned.startsWith("91") ? cleaned.slice(2) : cleaned;
+  return /^\d{10}$/.test(normalized);
+}
 
 export function getCartTotal(cart: CartItem[]): number {
   return cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
